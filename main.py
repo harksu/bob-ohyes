@@ -122,27 +122,6 @@ async def on_ready():
     print(f'Logged in as {bot.user}!')
     global current_directory
 
-@bot.command()
-
-def upload_file_to_container(container, file_data, filename, destination_path):
-    try:
-        #tar로 압축
-        tar_stream = io.BytesIO()
-        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
-            tarinfo = tarfile.TarInfo(name=os.path.basename(destination_path))
-            tarinfo.size = len(file_data)
-            tar.addfile(tarinfo, io.BytesIO(file_data))
-            #tar.add(file_path, arcname=os.path.basename(destination_path))
-        tar_stream.seek(0)
-
-        #압축 파일을 Docker 컨테이너에 업로드
-        container.put_archive(current_directory, tar_stream)
-        #return f"File {os.path.basename(file_path)} uploaded successfully to {destination_path}"
-        return f"File {filename} uploaded successfully to {destination_path}"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-#파일 업로드 시 호출
 @bot.event
 async def on_message(message):
     if message.attachments:
@@ -167,11 +146,33 @@ async def on_message(message):
     
     await bot.process_commands(message)
 
-# 디스코드 봇 토큰을 입력하세요
-
-async def ohyes(ctx, *, command):
+def upload_file_to_container(container, file_data, filename, destination_path):
+    print("파일 업로드 명령을 실행합니다.")
     try:
-        if command.startswith("cd "):
+        #tar로 압축
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+            tarinfo = tarfile.TarInfo(name=os.path.basename(destination_path))
+            tarinfo.size = len(file_data)
+            tar.addfile(tarinfo, io.BytesIO(file_data))
+            #tar.add(file_path, arcname=os.path.basename(destination_path))
+        tar_stream.seek(0)
+
+        #압축 파일을 Docker 컨테이너에 업로드
+        container.put_archive(current_directory, tar_stream)
+        #return f"File {os.path.basename(file_path)} uploaded successfully to {destination_path}"
+        return f"File {filename} uploaded successfully to {destination_path}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+
+@bot.command()
+async def ohyes(ctx, *, command = None):
+    try:
+        if ctx.message.attachments:
+            print("success")
+        elif command.startswith("cd "):
             await change_directory_command(ctx, command)
         elif any(editor in command.split()[0] for editor in ["vim", "vi", "nano"]) and "install" not in command:
             await editor_file_command(ctx, command)
