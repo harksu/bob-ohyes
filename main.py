@@ -3,6 +3,8 @@ from discord.ext import commands
 import docker
 from dotenv import load_dotenv
 import os
+import tarfile
+import io
 import logging
 import subprocess
 
@@ -29,7 +31,8 @@ async def setup_container():
         container = client.containers.run(
             "python:slim",
             detach=True,
-            tty=True
+            tty=True,
+            environment={"LANG":"ko_KR.UTF-8"}
         )
     return container
 
@@ -40,8 +43,10 @@ async def run_docker_command(command):
     global current_directory
     container = await setup_container()
     try:
-        exec_result = container.exec_run(f"bash -c 'cd {current_directory} && {command}'")
-        output = exec_result.output.decode('utf-8')
+
+        # 명령어 실행
+        exec_result = container.exec_run(f"bash -c 'cd {current_directory} && {command}'") # 셸을 가져오는 방식
+        output = exec_result.output.decode('utf-8', errors='ignore')
     except Exception as e:
         output = f"Error: {str(e)}"
     return output
@@ -118,6 +123,52 @@ async def on_ready():
     global current_directory
 
 @bot.command()
+
+def upload_file_to_container(container, file_data, filename, destination_path):
+    try:
+        #tar로 압축
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+            tarinfo = tarfile.TarInfo(name=os.path.basename(destination_path))
+            tarinfo.size = len(file_data)
+            tar.addfile(tarinfo, io.BytesIO(file_data))
+            #tar.add(file_path, arcname=os.path.basename(destination_path))
+        tar_stream.seek(0)
+
+        #압축 파일을 Docker 컨테이너에 업로드
+        container.put_archive(current_directory, tar_stream)
+        #return f"File {os.path.basename(file_path)} uploaded successfully to {destination_path}"
+        return f"File {filename} uploaded successfully to {destination_path}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+#파일 업로드 시 호출
+@bot.event
+async def on_message(message):
+    if message.attachments:
+        for attachment in message.attachments:
+            file_data = await attachment.read()
+
+            #Docke에 파일 업로드
+            container = await setup_container()
+
+            #현재 위치를 결정
+            current_directory = os.getcwd()
+
+            #루트가 아닌 경우 경로 설정
+            if current_directory != '/':
+                destination_path = f"{current_directory}/{attachment.filename}"  #컨테이너 내 경로
+            else:
+                destination_path = f"/{attachment.filename}"  #컨테이너 내 경로
+
+            upload_result = upload_file_to_container(container, file_data, attachment.filename, destination_path)
+
+            await message.channel.send(upload_result)
+    
+    await bot.process_commands(message)
+
+# 디스코드 봇 토큰을 입력하세요
+
 async def ohyes(ctx, *, command):
     try:
         if command.startswith("cd "):
