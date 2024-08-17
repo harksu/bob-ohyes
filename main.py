@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
+print("just test")
 # Docker 클라이언트 생성
 client = docker.from_env()
 
