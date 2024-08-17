@@ -1,3 +1,4 @@
 bob-ohyes-venv
 .env
+*.txt
 #추가해서 사용하도록 합시당
