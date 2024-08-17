@@ -3,13 +3,22 @@ from discord.ext import commands
 import docker
 from dotenv import load_dotenv
 import os
+import subprocess
+import logging
+import shutil
+
 
 load_dotenv()
 
-# Docker 클라이언트 생성
+logging.basicConfig(level=logging.DEBUG, 
+                    format='%(asctime)s - %(levelname)s - %(message)s',  
+                    handlers=[
+                        logging.StreamHandler()  
+                    ])
+
 client = docker.from_env()
 
-# 봇의 프리픽스를 설정합니다 (예: !로 명령어 시작)
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -22,9 +31,9 @@ async def setup_container():
     global container
     if container is None:
         container = client.containers.run(
-            "python:slim",  # Python slim 이미지
-            detach=True,    # 백그라운드에서 실행
-            tty=True        # 터미널 모드 활성화
+            "python:slim",  
+            detach=True,    
+            tty=True        
         )
     return container
 
@@ -48,7 +57,7 @@ async def on_ready():
     print(f'Logged in as {bot.user}!')
 
 @bot.command()
-async def exec(ctx, *, command):
+async def ohyes(ctx, *, command):
     global current_directory
     try:
         if command.startswith("cd "):
@@ -71,14 +80,38 @@ async def exec(ctx, *, command):
                     await ctx.send(f"Error: Unable to change directory to {new_directory}")
                     return
 
-            await ctx.send(f"Changed directory to: {current_directory}")
+            await ctx.send(f"Changed directory to: {current_directory}")        
+        elif any(editor in command.split()[0] for editor in ["vim", "vi", "nano"]) and "install" not in command:
+            logging.info("command에 'vim', 'vi', 'nano' 중 하나가 포함되어 있습니다.") 
+            parts = command.split()
+            filename = parts[1]
+            if not os.path.exists(filename):
+                with open(filename, 'w') as file:       
+                    file.write(f"해당 파일은 bob13기 개발톤을 위한 데모 과정의 파일이며, 파일이름은 {filename}입니다")  
+            is_vs_code_installed = shutil.which("code") is not None
 
+            if is_vs_code_installed:
+                notepad_process = subprocess.Popen(['code', '--wait', filename])
+            else:
+                notepad_process = subprocess.Popen(['notepad.exe', filename])      
+
+            logging.info("notepad close wait ...")
+            notepad_process.wait()
+
+            try:
+              with open(filename, 'r') as file:
+                #여기서 파일 업로드 기능 합치기
+                file_content = file.read()
+                run_commnad = "echo"+" "+'"'+file_content+'"'+">"+filename
+                await ctx.send(f"Executing command: {run_commnad}")
+                output = await run_docker_command(run_commnad)
+            except FileNotFoundError:
+                logging.error("파일이 존재하지 않습니다. 저장을 제대로 했는지 확인하세요.")
+                return 
         else:
-            # 일반 명령어 실행
             await ctx.send(f"Executing command: {command}")
             output = await run_docker_command(command)
             if len(output) > 2000:
-                # 디스코드 메시지 크기 제한을 초과하면 파일로 전송
                 with open("output.txt", "w") as f:
                     f.write(output)
                 await ctx.send("Output is too long to display in a single message. Here is the file:", file=discord.File("output.txt"))
@@ -87,7 +120,6 @@ async def exec(ctx, *, command):
     except Exception as e:
         await ctx.send(f'Error: {str(e)}')
 
-# 디스코드 봇 토큰을 입력하세요
 bot.run(os.getenv('APIKEY'))
 
 @bot.event
