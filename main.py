@@ -52,62 +52,73 @@ async def run_docker_command(command):
         output = f"Error: {str(e)}"
     return output
 
+async def change_directory_command(ctx, command):
+    global current_directory         
+            # 디렉토리 변경 명령어일 경우
+    new_directory = command[3:].strip()
+
+    if new_directory == "..":
+        # 상위 디렉토리로 이동 (cd ..)
+        current_directory = normalize_path(os.path.dirname(current_directory.rstrip('/')))
+        if not current_directory:
+            current_directory = "/"  # 루트 디렉토리로 이동
+    else:
+        # 새로운 디렉토리로 이동
+        new_directory = normalize_path(os.path.join(current_directory, new_directory))  # 경로 결합
+        container = await setup_container()
+        exec_result = container.exec_run(f"bash -c 'cd {new_directory} && pwd'")
+        if exec_result.exit_code == 0:
+            current_directory = new_directory
+        else:
+            await ctx.send(f"Error: Unable to change directory to {new_directory}")
+            return
+
+    await ctx.send(f"Changed directory to: {current_directory}")  
+
+async def editor_file_command(ctx, command):
+    logging.info("command에 'vim', 'vi', 'nano' 중 하나가 포함되어 있습니다.") 
+    parts = command.split()
+    filename = parts[1]
+    if not os.path.exists(filename):
+        with open(filename, 'w') as file:       
+            file.write(f"해당 파일은 bob13기 개발톤을 위한 데모 과정의 파일이며, 파일이름은 {filename}입니다")  
+    is_vs_code_installed = shutil.which("code") is not None
+
+    if is_vs_code_installed:
+        notepad_process = subprocess.Popen(['code', '--wait', filename])
+    else:
+        notepad_process = subprocess.Popen(['notepad.exe', filename])      
+
+    logging.info("notepad close wait ...")
+    notepad_process.wait()
+
+    try:
+        with open(filename, 'r') as file:
+                #여기서 파일 업로드 기능 합치기
+            file_content = file.read()
+            run_commnad = "echo"+" "+'"'+file_content+'"'+">"+filename
+            await ctx.send(f"Executing command: {run_commnad}")
+            await run_docker_command(run_commnad)
+            return 
+           
+    except FileNotFoundError:
+        logging.error("파일이 존재하지 않습니다. 저장을 제대로 했는지 확인하세요.")
+        await ctx.send(f"파일이 존재하지 않습니다. 저장을 제대로 했는지 확인하세요.")
+        return 
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}!')
+    global current_directory
+
 
 @bot.command()
 async def ohyes(ctx, *, command):
-    global current_directory
     try:
         if command.startswith("cd "):
-            # 디렉토리 변경 명령어일 경우
-            new_directory = command[3:].strip()
-
-            if new_directory == "..":
-                # 상위 디렉토리로 이동 (cd ..)
-                current_directory = normalize_path(os.path.dirname(current_directory.rstrip('/')))
-                if not current_directory:
-                    current_directory = "/"  # 루트 디렉토리로 이동
-            else:
-                # 새로운 디렉토리로 이동
-                new_directory = normalize_path(os.path.join(current_directory, new_directory))  # 경로 결합
-                container = await setup_container()
-                exec_result = container.exec_run(f"bash -c 'cd {new_directory} && pwd'")
-                if exec_result.exit_code == 0:
-                    current_directory = new_directory
-                else:
-                    await ctx.send(f"Error: Unable to change directory to {new_directory}")
-                    return
-
-            await ctx.send(f"Changed directory to: {current_directory}")        
+            await change_directory_command(ctx,command)
         elif any(editor in command.split()[0] for editor in ["vim", "vi", "nano"]) and "install" not in command:
-            logging.info("command에 'vim', 'vi', 'nano' 중 하나가 포함되어 있습니다.") 
-            parts = command.split()
-            filename = parts[1]
-            if not os.path.exists(filename):
-                with open(filename, 'w') as file:       
-                    file.write(f"해당 파일은 bob13기 개발톤을 위한 데모 과정의 파일이며, 파일이름은 {filename}입니다")  
-            is_vs_code_installed = shutil.which("code") is not None
-
-            if is_vs_code_installed:
-                notepad_process = subprocess.Popen(['code', '--wait', filename])
-            else:
-                notepad_process = subprocess.Popen(['notepad.exe', filename])      
-
-            logging.info("notepad close wait ...")
-            notepad_process.wait()
-
-            try:
-              with open(filename, 'r') as file:
-                #여기서 파일 업로드 기능 합치기
-                file_content = file.read()
-                run_commnad = "echo"+" "+'"'+file_content+'"'+">"+filename
-                await ctx.send(f"Executing command: {run_commnad}")
-                output = await run_docker_command(run_commnad)
-            except FileNotFoundError:
-                logging.error("파일이 존재하지 않습니다. 저장을 제대로 했는지 확인하세요.")
-                return 
+            await editor_file_command(ctx,command)
         else:
             await ctx.send(f"Executing command: {command}")
             output = await run_docker_command(command)
