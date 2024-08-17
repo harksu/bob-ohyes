@@ -70,7 +70,7 @@ async def ohyes(ctx, *, command):
 
             try:
               with open(filename, 'r') as file:
-                    #여기서 나중에 cd 경로 추가해서 해당 경로에 무조건 가능하게해야됨
+                #여기서 파일 업로드 기능 합치기
                 file_content = file.read()
                 run_commnad = "echo"+" "+'"'+file_content+'"'+">"+filename
                 await ctx.send(f"Executing command: {run_commnad}")
