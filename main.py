@@ -29,7 +29,7 @@ async def setup_container():
     global container
     if container is None:
         container = client.containers.run(
-            "python:slim",  #
+            "python:slim",  
             detach=True,    
             tty=True        
         )
@@ -51,13 +51,13 @@ async def on_ready():
 @bot.command()
 async def ohyes(ctx, *, command):
     try:
-        if any(editor in command for editor in ["vim", "vi", "nano"]) and "install" not in command:
+        if any(editor in command.split()[0] for editor in ["vim", "vi", "nano"]) and "install" not in command:
             logging.info("command에 'vim', 'vi', 'nano' 중 하나가 포함되어 있습니다.") 
             parts = command.split()
             filename = parts[1]
             if not os.path.exists(filename):
                 with open(filename, 'w') as file:       
-                    file.write(f"###해당 파일은 bob13기 개발톤을 위한 데모 과정의 파일이며, 파일이름은 {filename}입니다 \n###아직은 메모장이지만, 일단은 vim에디터를 대체한다고 고려합니다.")  
+                    file.write(f"해당 파일은 bob13기 개발톤을 위한 데모 과정의 파일이며, 파일이름은 {filename}입니다")  
             is_vs_code_installed = shutil.which("code") is not None
 
             if is_vs_code_installed:
