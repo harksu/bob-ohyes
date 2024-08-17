@@ -73,8 +73,12 @@ async def run_docker_command(command):
 async def change_directory_command(ctx, command):
     global current_directory
     new_directory = command[3:].strip()
-
-    if new_directory == "..":
+    print(f"----------------------------------{new_directory}===========================")
+    if not new_directory:
+        current_directory = "/" 
+        await ctx.send(f"Changed directory to: {current_directory}")
+        return
+    elif new_directory == "..":
         current_directory = normalize_path(os.path.dirname(current_directory.rstrip('/')))
         if not current_directory:
             current_directory = "/"
@@ -209,6 +213,9 @@ async def ohyes(ctx, *, command = None):
         elif any(editor in command.split()[0] for editor in ["vim", "vi", "nano"]) and "install" not in command:
             await editor_file_command(ctx, command)
         else:
+            if command == "cd":
+                await change_directory_command(ctx,"cd /")
+                return
             await ctx.send(f"Executing command: {command}")
             output = await run_docker_command(command)
             if len(output) > 2000:
