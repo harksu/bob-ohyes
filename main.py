@@ -25,6 +25,28 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 container = None
 current_directory = "/"
 
+def normalize_path(path):
+    return os.path.normpath(path).replace("\\", "/")
+
+def upload_file_to_container(container, file_data, filename, destination_path):
+    print("파일 업로드 명령을 실행합니다.")
+    try:
+        #tar로 압축
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+            tarinfo = tarfile.TarInfo(name=os.path.basename(destination_path))
+            tarinfo.size = len(file_data)
+            tar.addfile(tarinfo, io.BytesIO(file_data))
+            #tar.add(file_path, arcname=os.path.basename(destination_path))
+        tar_stream.seek(0)
+
+        #압축 파일을 Docker 컨테이너에 업로드
+        container.put_archive(current_directory, tar_stream)
+        #return f"File {os.path.basename(file_path)} uploaded successfully to {destination_path}"
+        return f"File {filename} uploaded successfully to {destination_path}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 async def setup_container():
     global container
     if container is None:
@@ -35,9 +57,6 @@ async def setup_container():
             environment={"LANG":"ko_KR.UTF-8"}
         )
     return container
-
-def normalize_path(path):
-    return os.path.normpath(path).replace("\\", "/")
 
 async def run_docker_command(command):
     global current_directory
@@ -54,8 +73,12 @@ async def run_docker_command(command):
 async def change_directory_command(ctx, command):
     global current_directory
     new_directory = command[3:].strip()
-
-    if new_directory == "..":
+    print(f"----------------------------------{new_directory}===========================")
+    if not new_directory:
+        current_directory = "/" 
+        await ctx.send(f"Changed directory to: {current_directory}")
+        return
+    elif new_directory == "..":
         current_directory = normalize_path(os.path.dirname(current_directory.rstrip('/')))
         if not current_directory:
             current_directory = "/"
@@ -117,6 +140,33 @@ async def editor_file_command(ctx, command):
     except Exception as e:
         await ctx.send(f"Error: {str(e)}")
 
+async def download_file_from_container(ctx, filename):
+    global current_directory
+    container = await setup_container()
+    file_path = os.path.join(current_directory, filename)
+    
+    try:
+        tar_stream, _ = container.get_archive(file_path)
+        file_obj = io.BytesIO()
+        for chunk in tar_stream:
+            file_obj.write(chunk)
+        file_obj.seek(0)
+
+        with tarfile.open(fileobj=file_obj) as tar:
+            tar.extractall()
+
+        download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+
+        local_file_path = os.path.join(download_dir, filename)
+        os.rename(filename, local_file_path)
+
+        await ctx.send(file=discord.File(local_file_path))
+    except Exception as e:
+        await ctx.send(f"Error: {str(e)}")
+
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}!')
@@ -146,24 +196,7 @@ async def on_message(message):
     
     await bot.process_commands(message)
 
-def upload_file_to_container(container, file_data, filename, destination_path):
-    print("파일 업로드 명령을 실행합니다.")
-    try:
-        #tar로 압축
-        tar_stream = io.BytesIO()
-        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
-            tarinfo = tarfile.TarInfo(name=os.path.basename(destination_path))
-            tarinfo.size = len(file_data)
-            tar.addfile(tarinfo, io.BytesIO(file_data))
-            #tar.add(file_path, arcname=os.path.basename(destination_path))
-        tar_stream.seek(0)
 
-        #압축 파일을 Docker 컨테이너에 업로드
-        container.put_archive(current_directory, tar_stream)
-        #return f"File {os.path.basename(file_path)} uploaded successfully to {destination_path}"
-        return f"File {filename} uploaded successfully to {destination_path}"
-    except Exception as e:
-        return f"Error: {str(e)}"
 
 
 
@@ -172,11 +205,17 @@ async def ohyes(ctx, *, command = None):
     try:
         if ctx.message.attachments:
             print("success")
+        elif command.startswith("download "):
+            filename = command.split(" ")[1]
+            await download_file_from_container(ctx, filename)
         elif command.startswith("cd "):
             await change_directory_command(ctx, command)
         elif any(editor in command.split()[0] for editor in ["vim", "vi", "nano"]) and "install" not in command:
             await editor_file_command(ctx, command)
         else:
+            if command == "cd":
+                await change_directory_command(ctx,"cd /")
+                return
             await ctx.send(f"Executing command: {command}")
             output = await run_docker_command(command)
             if len(output) > 2000:
